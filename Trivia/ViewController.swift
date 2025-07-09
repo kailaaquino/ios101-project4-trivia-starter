@@ -38,73 +38,85 @@ class ViewController: UIViewController {
     }
     
     @IBAction func restartGame(_ sender: UIButton) {
-        currentQuestionIndex = 0
-        correctAnswers = 0
         restartButton.isHidden = true
         categoryLabel.isHidden = false
-        showQuestion()
+        fetchQuestions()
     }
-    var questions: [Question] = [
-        Question(
-            text: "Who was the first American Idol Winner?",
-            category: "Music",
-            answers: [ "Kelly Clarkson", "Carrie Underwood", "Beyonce", "Simon Cowell"
-                     ],
-            correctAnswer: "Kelly Clarkson"
-        ),
-        Question(
-            text: "What is the first meal of the day?",
-            category: "Food",
-            answers: ["Dinner", "Lunch", "Breakfast", "Snack"],
-            correctAnswer: "Breakfast"
-        ),
-        Question(
-            text: "What is the largest continent?",
-            category: "Geography",
-            answers: ["North America", "South America", "Asia", "Europe"],
-            correctAnswer: "Asia"
-        )
-    ]
+    
+    var questions: [Question] = []
     
     var currentQuestionIndex = 0
     var correctAnswers = 0
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        showQuestion()
+        fetchQuestions()
         restartButton.isHidden = true
 
     }
     
-    func showQuestion(){
-        if currentQuestionIndex < questions.count{
-            let currQuestion = questions[currentQuestionIndex]
+    func fetchQuestions() {
+        TriviaQuestionService.fetchQuestions { fetchedQuestions in
             
-            questionLabel.text = currQuestion.text
-            categoryLabel.text = currQuestion.category
-            optionButton1.setTitle(currQuestion.answers[0], for: .normal)
-            optionButton2.setTitle(currQuestion.answers[1], for: .normal)
-            optionButton3.setTitle(currQuestion.answers[2], for: .normal)
-            optionButton4.setTitle(currQuestion.answers[3], for: .normal)
+            self.questions = fetchedQuestions.map { q in
+                let allAnswers = (q.incorrectAnswers + [q.correctAnswer]).shuffled()
+                return Question(
+                    text: q.question.htmlDecoded,
+                    category: q.category.htmlDecoded,
+                    answers: allAnswers.map { $0.htmlDecoded },
+                    correctAnswer: q.correctAnswer.htmlDecoded
+                )
+            }
             
-            [optionButton1, optionButton2, optionButton3, optionButton4].forEach {
-                $0?.isHidden = false
+            DispatchQueue.main.async {
+                self.currentQuestionIndex = 0
+                self.correctAnswers = 0
+                self.showQuestion()
             }
         }
-        else{
+    }
+    
+    func showQuestion() {
+        guard currentQuestionIndex < questions.count else {
             showFinalScore()
+            return
+        }
+        
+        let currQuestion = questions[currentQuestionIndex]
+        questionLabel.text = currQuestion.text
+        categoryLabel.text = currQuestion.category
+        
+        let buttons = [optionButton1, optionButton2, optionButton3, optionButton4]
+        
+        for (i, button) in buttons.enumerated() {
+            if i < currQuestion.answers.count {
+                button?.setTitle(currQuestion.answers[i], for: .normal)
+                button?.isHidden = false
+            } else {
+                button?.isHidden = true
+            }
         }
     }
+    
     func showFinalScore(){
         questionLabel.text = "You got \(correctAnswers) out of \(questions.count) correct!"
-        optionButton1.isHidden = true
-        optionButton2.isHidden = true
-        optionButton3.isHidden = true
-        optionButton4.isHidden = true
+        [optionButton1, optionButton2, optionButton3, optionButton4].forEach { $0?.isHidden = true }
         categoryLabel.isHidden = true
         restartButton.isHidden = false
 
         
     }
     
+}
+
+extension String {
+    var htmlDecoded: String {
+        guard let data = self.data(using: .utf8) else { return self }
+        let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+            .documentType: NSAttributedString.DocumentType.html,
+            .characterEncoding: String.Encoding.utf8.rawValue
+        ]
+        let decoded = try? NSAttributedString(data: data, options: options, documentAttributes: nil)
+        return decoded?.string ?? self
+    }
 }
